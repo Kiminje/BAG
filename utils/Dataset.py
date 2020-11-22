@@ -6,7 +6,7 @@ import scipy.sparse
 """
 class Dataset(object):
     def __init__(self, filename_prefix, use_elmo, use_glove, use_extra_feature, use_full_query_token=False,
-                add_query_node=False, max_nodes=500, max_query_size=25, max_candidates=80, max_candidates_len=10,
+                add_query_node=False, max_nodes=600, max_query_size=25, max_candidates=80, max_candidates_len=10,
                 use_edge=True):
         if not use_elmo and not use_glove:
             raise Exception('At least one of ELMo, GloVe should be used')
