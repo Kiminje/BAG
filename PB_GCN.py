@@ -522,7 +522,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
     parser.add_argument('--info_interval', type=int, default=1000, help='The interval to display training loss info')
     parser.add_argument('--dropout', type=float, default=0.8, help="Keep rate for dropout in model")
-    parser.add_argument('--encoding_size', type=int, default=512,
+    parser.add_argument('--encoding_size', type=int, default=256,
                         help='The encoding output size for both query and nodes')
     parser.add_argument('--pos_emb_size', type=int, default=8, help='The size of POS embedding')
     parser.add_argument('--ner_emb_size', type=int, default=8, help='The size of NER embedding')
