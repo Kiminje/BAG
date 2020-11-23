@@ -14,7 +14,6 @@ from utils.ConfigLogger import config_logger
 from utils.str2bool import str2bool
 from utils.Dataset import Dataset
 
-
 """The model class
 """
 
@@ -35,15 +34,14 @@ class Model:
 
     """ Main function to get the model prediction"""
 
-    def modelProcessing(self, query_length, adj, nodes_mask, bmask, nodes_elmo, query_elmo, nodes_glove, query_glove,nodes_ner,
-                        query_ner, dropout):
+    def modelProcessing(self, query_length, adj, nodes_mask, bmask, nodes_elmo, query_elmo, nodes_glove, query_glove,
+                        dropout):
 
         ## obtain the multi-level feature for both nodes and query
         # nodes_compress, query_compress = self.featureLayer(query_length, nodes_elmo, query_elmo, nodes_glove,
         #                                                    query_glove,
         #                                                    nodes_ner, nodes_pos, query_ner, query_pos)
-        nodes_compress, query_compress = self.featureLayer(query_length, nodes_elmo, query_elmo, nodes_glove, query_glove,
-                                                           nodes_ner, query_ner)
+        nodes_compress, query_compress = self.featureLayer(query_length, nodes_elmo, query_elmo, nodes_glove,query_glove)
         # create nodes
         logger.info("nodes compress dim: %s", nodes_compress)
         logger.info("expand_dims shape: %s", tf.expand_dims(nodes_mask, -1))
@@ -72,8 +70,7 @@ class Model:
     """
     """def featureLayer(self, query_length, nodes_elmo, query_elmo, nodes_glove, query_glove, nodes_ner, nodes_pos,
                      query_ner, query_pos):"""
-    def featureLayer(self, query_length, nodes_elmo, query_elmo, nodes_glove, query_glove,
-                     nodes_ner, query_ner):
+    def featureLayer(self, query_length, nodes_elmo, query_elmo, nodes_glove, query_glove):
         # compress and flatten query
         # query uses only glove
         with tf.variable_scope('feature_layer', reuse=tf.AUTO_REUSE):
@@ -109,20 +106,17 @@ class Model:
             nodes_compress = tf.layers.dense(nodes_flat, units=self.encoding_size, activation=tf.nn.tanh)
 
             ## concatenate POS and NER feature with encoded feature
-            if self.use_extra_feature:
-                ner_embeddings = tf.get_variable('ner_embeddings', [self.ner_dict_size, self.ner_emb_size])
-                # pos_embeddings = tf.get_variable('pos_embeddings', [self.pos_dict_size, self.pos_emb_size])
-                query_ner_emb = tf.nn.embedding_lookup(ner_embeddings, query_ner)
-                # query_pos_emb = tf.nn.embedding_lookup(pos_embeddings, query_pos)
-                nodes_ner_emb = tf.nn.embedding_lookup(ner_embeddings, nodes_ner)
-                # nodes_pos_emb = tf.nn.embedding_lookup(pos_embeddings, nodes_pos)
-                # (batch_size, max_query_length, hidden_size + ner_emb_size + pos_emb_size)
-                # query_compress = tf.concat((query_compress, query_ner_emb, query_pos_emb), -1)
-                query_compress = tf.concat((query_compress, query_ner_emb), -1)
-                # (batch_size, max_nodes, hidden_size + ner_emb_size + pos_emb_size)
-                # nodes_compress = tf.concat((nodes_compress, nodes_ner_emb, nodes_pos_emb), -1)
-                nodes_compress = tf.concat((nodes_compress, nodes_ner_emb), -1)
-
+            # if self.use_extra_feature:
+            #     ner_embeddings = tf.get_variable('ner_embeddings', [self.ner_dict_size, self.ner_emb_size])
+            #     pos_embeddings = tf.get_variable('pos_embeddings', [self.pos_dict_size, self.pos_emb_size])
+            #     query_ner_emb = tf.nn.embedding_lookup(ner_embeddings, query_ner)
+            #     query_pos_emb = tf.nn.embedding_lookup(pos_embeddings, query_pos)
+            #     nodes_ner_emb = tf.nn.embedding_lookup(ner_embeddings, nodes_ner)
+            #     nodes_pos_emb = tf.nn.embedding_lookup(pos_embeddings, nodes_pos)
+            #     # (batch_size, max_query_length, hidden_size + ner_emb_size + pos_emb_size)
+            #     query_compress = tf.concat((query_compress, query_ner_emb, query_pos_emb), -1)
+            #     # (batch_size, max_nodes, hidden_size + ner_emb_size + pos_emb_size)
+            #     nodes_compress = tf.concat((nodes_compress, nodes_ner_emb, nodes_pos_emb), -1)
             # return nodes and preprocessing query(p)
             return nodes_compress, query_compress
 
@@ -173,15 +167,11 @@ class Model:
 
     def GCNLayer(self, adj, hidden_tensor, hidden_mask, query_compress):
         with tf.variable_scope('hop_layer', reuse=tf.AUTO_REUSE):
-            # adjacency_tensor : (batchsize, 3, 512, 512)
-            # hidden_tensor : (batchsize, 600, 512)
-            # hidden_mask : (batchsize, 600, 1)
             adjacency_tensor = adj
             # stack parameterized function sum{j<N_i}sum{r<R_i,j}f_r(h_j)
             hidden_tensors = tf.stack([tf.layers.dense(inputs=hidden_tensor, units=hidden_tensor.shape[-1])
                                        for _ in range(adj.shape[1])], 1) * \
                              tf.expand_dims(tf.expand_dims(hidden_mask, -1), 1)
-            # (batchsize, 3, 600, 512) * (batch size, 1, 600, 1) = (batch size, 3, 600, 512)
             logger.info("hidden_tensors shape: %s", hidden_tensors.shape)
 
             update = tf.reduce_sum(tf.matmul(adjacency_tensor, hidden_tensors), 1) + tf.layers.dense(
@@ -312,7 +302,9 @@ class Optimizer:
                                                             split_feature['adj'][count],
                                                             split_feature['nodes_mask'][count],
                                                             split_feature['bmask'][count],
-                                                            nodes_elmo, query_elmo, nodes_glove, query_glove, self.dropout)
+                                                            nodes_elmo, query_elmo, nodes_glove, query_glove, nodes_ner,
+                                                            nodes_pos, query_ner,
+                                                            query_pos, self.dropout)
                         cross_entropy = tf.losses.sparse_softmax_cross_entropy(
                             split_feature['answer_candidates_id'][count],
                             predictions, reduction=tf.losses.Reduction.NONE)
@@ -406,10 +398,10 @@ def runEvaluationStage(dev_dataset, session, use_elmo, use_glove, use_extra_feat
             feed_dict[optimizer.nodes_glove] = batch['nodes_glove_mb']
             feed_dict[optimizer.query_glove] = batch['query_glove_mb']
         if use_extra_feature:
-            # feed_dict[optimizer.nodes_pos] = batch['nodes_pos_mb']
+            feed_dict[optimizer.nodes_pos] = batch['nodes_pos_mb']
             feed_dict[optimizer.nodes_ner] = batch['nodes_ner_mb']
             feed_dict[optimizer.query_ner] = batch['query_ner_mb']
-            # feed_dict[optimizer.query_pos] = batch['query_pos_mb']
+            feed_dict[optimizer.query_pos] = batch['query_pos_mb']
         preds = np.argmax(session.run(optimizer.predictions, feed_dict), -1)
         eval_correct_count += (preds == batch['answer_candidates_id_mb']).sum()
         eval_sample_count += len(batch['query_length_mb'])
@@ -529,7 +521,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
     parser.add_argument('--info_interval', type=int, default=1000, help='The interval to display training loss info')
     parser.add_argument('--dropout', type=float, default=0.8, help="Keep rate for dropout in model")
-    parser.add_argument('--encoding_size', type=int, default=256,
+    parser.add_argument('--encoding_size', type=int, default=512,
                         help='The encoding output size for both query and nodes')
     parser.add_argument('--pos_emb_size', type=int, default=8, help='The size of POS embedding')
     parser.add_argument('--ner_emb_size', type=int, default=8, help='The size of NER embedding')
@@ -582,7 +574,6 @@ if __name__ == '__main__':
     dynamic_change_learning_rate = True
     logger.info('Is learning rate changing along with epoch count: %s', dynamic_change_learning_rate)
 
-    # tf.reset_default_graph()
     tf.reset_default_graph()
 
 
