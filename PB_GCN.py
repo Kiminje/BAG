@@ -7,6 +7,7 @@ import math
 import argparse
 import sys
 import json
+import matplotlib.pyplot as plt
 
 from nltk.tokenize import TweetTokenizer
 
@@ -642,6 +643,8 @@ if __name__ == '__main__':
         logger.info('Starting Training.....')
         best_accuracy = 0
         best_test_accuracy = 0
+        Loss = []
+        Accuracy = []
         for i in range(epochs):
             logger.info('=============================')
             logger.info('Starting Training Epoch %s', i + 1)
@@ -684,6 +687,7 @@ if __name__ == '__main__':
                     if loss_count != 0:
                         avg_loss = loss_sum / loss_count
                     logger.info('%s training samples has been done, loss = %.5f', sample_count, avg_loss)
+                    Loss.append(avg_loss)
                     interval_count -= training_info_interval
                     loss_sum = 0
                     loss_count = 0
@@ -694,6 +698,7 @@ if __name__ == '__main__':
             logger.info('Running the evaluation stage')
             accuracy, _ = runEvaluationStage(dev_dataset, session, use_elmo, use_glove, use_extra_feature,
                                              model=model)
+            Accuracy.append(accuracy)
             if accuracy > best_accuracy:
                 logger.info('Evaluation stage finished')
                 logger.info('Current model beats the previous best accuracy on dev, previous=%.4f, current=%.4f',
@@ -708,6 +713,27 @@ if __name__ == '__main__':
                     'Current model did not beat the previous best accuracy on dev, previous=%.3f, current=%.3f',
                     best_accuracy, accuracy)
             logger.info('=============================')
+        plt.plot(Loss)
+        plt.ylabel('loss')
+        plt.xlabel('training samples')
+        plt.legend('train loss')
+        plt.grid(b=True, which='major', color='#666666', linestyle='-')
+        plt.minorticks_on()
+        plt.grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
+        plt.title("<LOSS: {:0.3f}>".format(loss))
+        plt.savefig('PBGCN_loss.png')
+        plt.clf()
+
+        plt.plot(Accuracy)
+        plt.ylabel('accuracy')
+        plt.xlabel('training samples')
+        plt.legend('train accuracy')
+        plt.grid(b=True, which='major', color='#666666', linestyle='-')
+        plt.minorticks_on()
+        plt.grid(b=True, which='minor', color='#999999', linestyle='-', alpha=0.2)
+        plt.title("<LOSS: {:0.3f}>".format(loss))
+        plt.savefig('PBGCN_acc.png')
+        plt.clf()
     else:
         logger.info('=============================')
         logger.info('Starting Evaluation.....')
