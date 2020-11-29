@@ -35,15 +35,14 @@ class Model:
 
     """ Main function to get the model prediction"""
 
-    def modelProcessing(self, query_length, adj, nodes_mask, bmask, nodes_elmo, query_elmo, nodes_glove, query_glove,nodes_ner,
-                        query_ner, dropout):
+    def modelProcessing(self, query_length, adj, nodes_mask, bmask, nodes_elmo, query_elmo, nodes_glove, query_glove,
+                        dropout):
 
         ## obtain the multi-level feature for both nodes and query
         # nodes_compress, query_compress = self.featureLayer(query_length, nodes_elmo, query_elmo, nodes_glove,
         #                                                    query_glove,
         #                                                    nodes_ner, nodes_pos, query_ner, query_pos)
-        nodes_compress, query_compress = self.featureLayer(query_length, nodes_elmo, query_elmo, nodes_glove, query_glove,
-                                                           nodes_ner, query_ner)
+        nodes_compress, query_compress = self.featureLayer(query_length, nodes_elmo, query_elmo, nodes_glove, query_glove)
         # create nodes
         logger.info("nodes compress dim: %s", nodes_compress)
         logger.info("expand_dims shape: %s", tf.expand_dims(nodes_mask, -1))
@@ -72,8 +71,7 @@ class Model:
     """
     """def featureLayer(self, query_length, nodes_elmo, query_elmo, nodes_glove, query_glove, nodes_ner, nodes_pos,
                      query_ner, query_pos):"""
-    def featureLayer(self, query_length, nodes_elmo, query_elmo, nodes_glove, query_glove,
-                     nodes_ner, query_ner):
+    def featureLayer(self, query_length, nodes_elmo, query_elmo, nodes_glove, query_glove):
         # compress and flatten query
         # query uses only glove
         with tf.variable_scope('feature_layer', reuse=tf.AUTO_REUSE):
@@ -108,32 +106,29 @@ class Model:
             # query_compress = tf.concat((output_state_fw[-1].h, output_state_bw[-1].h), -1)
             nodes_compress = tf.layers.dense(nodes_flat, units=self.encoding_size, activation=tf.nn.tanh)
 
-            ## concatenate POS and NER feature with encoded feature
-            if self.use_extra_feature:
-                ner_embeddings = tf.get_variable('ner_embeddings', [self.ner_dict_size, self.ner_emb_size])
-                # pos_embeddings = tf.get_variable('pos_embeddings', [self.pos_dict_size, self.pos_emb_size])
-                query_ner_emb = tf.nn.embedding_lookup(ner_embeddings, query_ner)
-                # query_pos_emb = tf.nn.embedding_lookup(pos_embeddings, query_pos)
-                nodes_ner_emb = tf.nn.embedding_lookup(ner_embeddings, nodes_ner)
-                # nodes_pos_emb = tf.nn.embedding_lookup(pos_embeddings, nodes_pos)
-                # (batch_size, max_query_length, hidden_size + ner_emb_size + pos_emb_size)
-                # query_compress = tf.concat((query_compress, query_ner_emb, query_pos_emb), -1)
-                query_compress = tf.concat((query_compress, query_ner_emb), -1)
-                # (batch_size, max_nodes, hidden_size + ner_emb_size + pos_emb_size)
-                # nodes_compress = tf.concat((nodes_compress, nodes_ner_emb, nodes_pos_emb), -1)
-                nodes_compress = tf.concat((nodes_compress, nodes_ner_emb), -1)
+            # ## concatenate POS and NER feature with encoded feature
+            # if self.use_extra_feature:
+            #     ner_embeddings = tf.get_variable('ner_embeddings', [self.ner_dict_size, self.ner_emb_size])
+            #     # pos_embeddings = tf.get_variable('pos_embeddings', [self.pos_dict_size, self.pos_emb_size])
+            #     query_ner_emb = tf.nn.embedding_lookup(ner_embeddings, query_ner)
+            #     # query_pos_emb = tf.nn.embedding_lookup(pos_embeddings, query_pos)
+            #     nodes_ner_emb = tf.nn.embedding_lookup(ner_embeddings, nodes_ner)
+            #     # nodes_pos_emb = tf.nn.embedding_lookup(pos_embeddings, nodes_pos)
+            #     # (batch_size, max_query_length, hidden_size + ner_emb_size + pos_emb_size)
+            #     # query_compress = tf.concat((query_compress, query_ner_emb, query_pos_emb), -1)
+            #     query_compress = tf.concat((query_compress, query_ner_emb), -1)
+            #     # (batch_size, max_nodes, hidden_size + ner_emb_size + pos_emb_size)
+            #     # nodes_compress = tf.concat((nodes_compress, nodes_ner_emb, nodes_pos_emb), -1)
+            #     nodes_compress = tf.concat((nodes_compress, nodes_ner_emb), -1)
 
             # return nodes and preprocessing query(p)
             return nodes_compress, query_compress
 
-    """ Output layer in BAG
-    """
+
 
     def outputLayer(self, attentionFlowOutput, bmask):
         with tf.variable_scope('output_layer', reuse=tf.AUTO_REUSE):
             ## two layer FFN
-            ## The dimension of intermediate layer in following FFN is 128 for pre-trained model
-            ## You can try to use 256 because I found it has a better performance on dev ser.
             rawPredictions = tf.squeeze(tf.layers.dense(tf.layers.dense(
                 attentionFlowOutput, units=128, activation=tf.nn.tanh), units=1), -1)
 
@@ -143,33 +138,36 @@ class Model:
             predictions2 = tf.reduce_max(predictions2, -1)
             return predictions2
 
-    """ Bi-directional attention layer in BAG
-    """
 
     def biAttentionLayer(self, query_compress, nodes_compress, last_hop):
         with tf.variable_scope('attention_flow', reuse=tf.AUTO_REUSE):
             # context_query_similarity = (batch_size, max_nodes, node_feature_dim)
-            expanded_query = tf.tile(tf.expand_dims(query_compress, -3), (1, self.max_nodes, 1, 1))
-            expanded_nodes = tf.tile(tf.expand_dims(last_hop, -2), (1, 1, self.max_query_size, 1))
-            context_query_similarity = expanded_nodes * expanded_query
+            ExpandedQuery = tf.tile(tf.expand_dims(query_compress, -3), (1, self.max_nodes, 1, 1))
+            ExpandedNodes = tf.tile(tf.expand_dims(last_hop, -2), (1, 1, self.max_query_size, 1))
+            logger.info("ExpandedNodes shape : %s", ExpandedNodes.shape)
+            logger.info("ExpandedQuery shape : %s", ExpandedQuery.shape)
+            context_query_similarity = ExpandedNodes * ExpandedQuery
             # concated_attention_data = (batch_size, max_nodes, max_query, feature_dim)
-            concated_attention_data = tf.concat((expanded_nodes, expanded_query, context_query_similarity), -1)
+            concated_attention_data = tf.concat((ExpandedNodes, ExpandedQuery, context_query_similarity), -1)
             similarity = tf.reduce_mean(tf.layers.dense(concated_attention_data, units=1, use_bias=False),
                                         -1)  # (batch_size, max_nodes, max_query)
             logger.info("similarity matrix shape : %s", similarity.shape)
 
             ## nodes to query = (batch_size, max_nodes, feature_dim)
             nodes2query = tf.matmul(tf.nn.softmax(similarity, -1), query_compress)
-            ## query to nodes = (batch_size, max_query, feature_dim)
-            b = tf.nn.softmax(tf.reduce_max(similarity, -1), -1)  # b = (batch_size, max_nodes)
-            query2nodes = tf.matmul(tf.expand_dims(b, 1), nodes_compress)
-            query2nodes = tf.tile(query2nodes, (1, self.max_nodes, 1))
-            G = tf.concat((nodes_compress, nodes2query, nodes_compress * nodes2query, nodes_compress * query2nodes), -1)
-            # G = tf.concat((nodes_compress, nodes_compress * nodes2query, nodes_compress * query2nodes), -1)
+            ## query to nodes = (batch_size, max_nodes, feature_dim)
+            logger.info("node2query shape : %s", nodes2query.shape)
+            b = tf.nn.softmax(tf.reduce_max(similarity, -1), -1)  # b = (batch_size, max nodes)
+            logger.info("column max shape : %s", b.shape)
+            query2nodes = tf.tile(tf.expand_dims(b, -2), (1, self.max_nodes, 1))  # duplicate T times -> (batch size, max_query, max_nodes)
+            logger.info("duplicate shape : %s", query2nodes.shape)
+            query2nodes = tf.matmul(query2nodes, last_hop)  # node = (batch size, max nodes, feature dimension)
+            logger.info("multiplication shape : %s", query2nodes.shape)
+            # query2nodes = (batch size, max nodes, feature dimension)
+            G = tf.concat((last_hop, nodes2query, query2nodes * last_hop), -1)
+            logger.info("biattention Output shape : %s", G.shape)
             return G
 
-    """ The GCN layer in BAG
-    """
 
     def GCNLayer(self, adj, hidden_tensor, hidden_mask, query_compress):
         with tf.variable_scope('hop_layer', reuse=tf.AUTO_REUSE):
@@ -560,11 +558,11 @@ if __name__ == '__main__':
     weight_file = 'data/elmo_2x4096_512_2048cnn_2xhighway_weights'
     encoding_type_map = {'lstm': 'lstm', 'linear': 'linear'}
 
-    model_name = 'BAG'
+    model_name = 'PathBasedGCN'
     if evaluation_mode:
         logger = config_logger('evaluation/' + model_name)
     else:
-        logger = config_logger('BAG')
+        logger = config_logger('PathBasedGCN')
 
     model_path = os.getcwd() + '/models/' + model_name + '/'
     if not os.path.exists(model_path):
